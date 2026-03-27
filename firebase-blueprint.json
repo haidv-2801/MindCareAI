@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "birthYear": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "email", "gender", "birthYear", "createdAt"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A conversation session between a user and the AI",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "sessionTitle": { "type": "string" },
+        "sessionSummary": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "sessionTitle", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "An individual message in a chat session",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai"] },
+        "messageText": { "type": "string" },
+        "emotionDetected": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sessionId", "sender", "messageText", "createdAt"]
+    },
+    "MoodEntry": {
+      "title": "MoodEntry",
+      "description": "Daily mood tracking entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "moodLevel": { "type": "integer" },
+        "moodNote": { "type": "string" },
+        "recordedDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "moodLevel", "recordedDate"]
+    },
+    "PsychologicalAssessment": {
+      "title": "PsychologicalAssessment",
+      "description": "Periodic psychological health assessment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "stressLevel": { "type": "integer" },
+        "anxietyLevel": { "type": "integer" },
+        "depressionLevel": { "type": "integer" },
+        "sleepQuality": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "stressLevel", "anxietyLevel", "depressionLevel", "sleepQuality", "createdAt"]
+    },
+    "CrisisAlert": {
+      "title": "CrisisAlert",
+      "description": "Safety alert triggered by AI analysis",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "alertLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "alertMessage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "sessionId", "alertLevel", "alertMessage", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/chat_sessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "Chat sessions for users"
+    },
+    "/chat_sessions/{sessionId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a session"
+    },
+    "/mood_tracking/{moodId}": {
+      "schema": "MoodEntry",
+      "description": "Mood tracking records"
+    },
+    "/psychological_assessments/{assessmentId}": {
+      "schema": "PsychologicalAssessment",
+      "description": "Psychological assessments"
+    },
+    "/crisis_alerts/{alertId}": {
+      "schema": "CrisisAlert",
+      "description": "Crisis alerts"
+    }
+  }
+}

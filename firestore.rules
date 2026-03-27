@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['fullName', 'email', 'gender', 'birthYear', 'createdAt']) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.gender in ['Male', 'Female', 'Other'] &&
+             data.birthYear is int && data.birthYear > 1900 && data.birthYear < 2026 &&
+             data.createdAt is string;
+    }
+
+    function isValidChatSession(data) {
+      return data.keys().hasAll(['userId', 'sessionTitle', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.sessionTitle is string && data.sessionTitle.size() > 0 && data.sessionTitle.size() < 200 &&
+             data.createdAt is string;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['sessionId', 'sender', 'messageText', 'createdAt']) &&
+             data.sender in ['user', 'ai'] &&
+             data.messageText is string && data.messageText.size() > 0 && data.messageText.size() < 5000 &&
+             data.createdAt is string;
+    }
+
+    function isValidMoodEntry(data) {
+      return data.keys().hasAll(['userId', 'moodLevel', 'recordedDate']) &&
+             data.userId == request.auth.uid &&
+             data.moodLevel is int && data.moodLevel >= 1 && data.moodLevel <= 10 &&
+             data.recordedDate is string;
+    }
+
+    function isValidAssessment(data) {
+      return data.keys().hasAll(['userId', 'stressLevel', 'anxietyLevel', 'depressionLevel', 'sleepQuality', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.stressLevel is int && data.stressLevel >= 0 && data.stressLevel <= 10 &&
+             data.anxietyLevel is int && data.anxietyLevel >= 0 && data.anxietyLevel <= 10 &&
+             data.depressionLevel is int && data.depressionLevel >= 0 && data.depressionLevel <= 10 &&
+             data.sleepQuality is int && data.sleepQuality >= 0 && data.sleepQuality <= 10 &&
+             data.createdAt is string;
+    }
+
+    function isValidCrisisAlert(data) {
+      return data.keys().hasAll(['userId', 'sessionId', 'alertLevel', 'alertMessage', 'createdAt']) &&
+             data.userId is string &&
+             data.alertLevel in ['low', 'medium', 'high'] &&
+             data.alertMessage is string &&
+             data.createdAt is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /chat_sessions/{sessionId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidChatSession(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidChatSession(request.resource.data);
+      allow delete: if isAuthenticated() && isDocOwner();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      }
+    }
+
+    match /mood_tracking/{moodId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidMoodEntry(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidMoodEntry(request.resource.data);
+      allow delete: if isAuthenticated() && isDocOwner();
+    }
+
+    match /psychological_assessments/{assessmentId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidAssessment(request.resource.data);
+    }
+
+    match /crisis_alerts/{alertId} {
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidCrisisAlert(request.resource.data);
+    }
+  }
+}

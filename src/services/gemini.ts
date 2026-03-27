@@ -1,0 +1,35 @@
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+export const getAIResponse = async (message: string, history: { role: 'user' | 'model', parts: { text: string }[] }[]) => {
+  const model = ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: history.concat([{ role: 'user', parts: [{ text: message }] }]),
+    config: {
+      systemInstruction: `You are MindCare AI, a compassionate and professional mental health support assistant. 
+      Your goal is to provide emotional support, active listening, and helpful coping strategies. 
+      
+      CRITICAL SAFETY RULES:
+      1. If the user expresses intent to harm themselves or others, you MUST prioritize safety. 
+      2. Provide crisis hotline information immediately if danger is detected.
+      3. Do not provide medical diagnoses or prescribe medication.
+      4. Be empathetic, non-judgmental, and supportive.
+      5. Keep responses concise but meaningful.
+      6. If you detect a crisis, start your response with [CRISIS_DETECTED] followed by a level (low, medium, high) and a brief reason.`,
+    },
+  });
+
+  const response = await model;
+  return response.text;
+};
+
+export const analyzeEmotion = async (text: string) => {
+  const model = ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Analyze the emotion in the following text and return ONLY one word (e.g., Happy, Sad, Anxious, Angry, Neutral, Overwhelmed): "${text}"`,
+  });
+
+  const response = await model;
+  return response.text?.trim() || "Neutral";
+};
