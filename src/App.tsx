@@ -185,7 +185,7 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {view === 'dashboard' && <Dashboard profile={profile} setView={setView} />}
+              {view === 'dashboard' && <Dashboard profile={profile} user={user} setView={setView} />}
               {view === 'chat' && <Chat user={user} />}
               {view === 'mood' && <MoodTracker user={user} />}
               {view === 'assessment' && <Assessment user={user} />}

@@ -1,38 +1,90 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { UserProfile, MoodEntry, PsychologicalAssessment } from '../types';
+import { collection, query, where, orderBy, limit, getDocs, onSnapshot } from 'firebase/firestore';
+import { User } from 'firebase/auth';
+import { UserProfile, MoodEntry, PsychologicalAssessment, Message } from '../types';
 import { motion } from 'motion/react';
-import { Heart, ClipboardCheck, TrendingUp, Calendar, ArrowRight, Loader2 } from 'lucide-react';
+import { Heart, ClipboardCheck, TrendingUp, Calendar, ArrowRight, Loader2, BrainCircuit } from 'lucide-react';
 import { format } from 'date-fns';
 
-export default function Dashboard({ profile, setView }: { profile: UserProfile, setView: (v: any) => void }) {
+export default function Dashboard({ profile, user, setView }: { profile: UserProfile, user: User, setView: (v: any) => void }) {
   const [recentMoods, setRecentMoods] = useState<MoodEntry[]>([]);
+  const [assessmentCount, setAssessmentCount] = useState(0);
+  const [emotionStats, setEmotionStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    if (!user) return;
+
+    // 1. Real-time Mood Tracking
+    const moodQuery = query(
+      collection(db, 'mood_tracking'),
+      where('userId', '==', user.uid),
+      orderBy('recordedDate', 'desc'),
+      limit(5)
+    );
+
+    const unsubscribeMoods = onSnapshot(moodQuery, (snapshot) => {
+      setRecentMoods(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MoodEntry)));
+      setLoading(false);
+      // Re-fetch emotions when activity occurs
+      fetchEmotions();
+    }, (error) => {
+      console.error('Mood snapshot error:', error);
+      setLoading(false);
+    });
+
+    // 2. Real-time Assessment Count
+    const assessmentQuery = query(
+      collection(db, 'psychological_assessments'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribeAssessments = onSnapshot(assessmentQuery, (snapshot) => {
+      setAssessmentCount(snapshot.size);
+    });
+
+    // 3. Fetch Emotions
+    const fetchEmotions = async () => {
       try {
-        const moodQuery = query(
-          collection(db, 'mood_tracking'),
-          orderBy('recordedDate', 'desc'),
-          limit(5)
+        const sessionsQuery = query(
+          collection(db, 'chat_sessions'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(3)
         );
-        const snapshot = await getDocs(moodQuery);
-        setRecentMoods(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MoodEntry)));
+        const sessionsSnapshot = await getDocs(sessionsQuery);
+        const stats: Record<string, number> = {};
+        
+        for (const sessionDoc of sessionsSnapshot.docs) {
+          const messagesQuery = query(
+            collection(db, `chat_sessions/${sessionDoc.id}/messages`),
+            where('sender', '==', 'ai')
+          );
+          const messagesSnapshot = await getDocs(messagesQuery);
+          messagesSnapshot.docs.forEach(doc => {
+            const data = doc.data() as Message;
+            if (data.emotionDetected) {
+              stats[data.emotionDetected] = (stats[data.emotionDetected] || 0) + 1;
+            }
+          });
+        }
+        setEmotionStats(stats);
       } catch (error) {
-        console.error('Dashboard fetch error:', error);
-      } finally {
-        setLoading(false);
+        console.error('Emotion fetch error:', error);
       }
     };
-    fetchData();
-  }, []);
+
+    return () => {
+      unsubscribeMoods();
+      unsubscribeAssessments();
+    };
+  }, [user.uid]);
 
   const stats = [
     { label: 'Avg Mood', value: recentMoods.length > 0 ? (recentMoods.reduce((acc, m) => acc + m.moodLevel, 0) / recentMoods.length).toFixed(1) : 'N/A', icon: Heart, color: 'text-rose-500', bg: 'bg-rose-50' },
-    { label: 'Logs', value: recentMoods.length.toString(), icon: ClipboardCheck, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-    { label: 'Status', value: 'Active', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { label: 'Assessments', value: assessmentCount.toString(), icon: ClipboardCheck, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+    { label: 'Dominant Emotion', value: Object.keys(emotionStats).length > 0 ? Object.entries(emotionStats).sort((a, b) => b[1] - a[1])[0][0] : 'N/A', icon: BrainCircuit, color: 'text-indigo-500', bg: 'bg-indigo-50' },
   ];
 
   if (loading) {
