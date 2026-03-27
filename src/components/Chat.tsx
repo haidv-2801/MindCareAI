@@ -2,14 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, limit, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
-import { Message, ChatSession } from '../types';
+import { UserProfile, Message, ChatSession } from '../types';
 import { getAIResponse, analyzeEmotion, summarizeSession } from '../services/gemini';
 import { Send, Bot, User as UserIcon, AlertTriangle, Loader2, MessageSquare, Plus, ChevronRight, History, Edit2, Check, X as CloseIcon } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 
-export default function Chat({ user }: { user: User }) {
+export default function Chat({ user, profile }: { user: User, profile: UserProfile }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -137,7 +137,7 @@ export default function Chat({ user }: { user: User }) {
         parts: [{ text: m.messageText }]
       }));
       
-      const aiText = await getAIResponse(text, history);
+      const aiText = await getAIResponse(text, history, profile);
       const emotion = await analyzeEmotion(text);
 
       // 3. Save AI message

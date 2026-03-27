@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { UserProfile } from './types';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import MoodTracker from './components/MoodTracker';
 import Assessment from './components/Assessment';
-import { LayoutDashboard, MessageSquare, Heart, ClipboardCheck, LogOut, Menu, X } from 'lucide-react';
+import Profile from './components/Profile';
+import { LayoutDashboard, MessageSquare, Heart, ClipboardCheck, LogOut, Menu, X, UserCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type View = 'dashboard' | 'chat' | 'mood' | 'assessment';
+type View = 'dashboard' | 'chat' | 'mood' | 'assessment' | 'profile';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -21,18 +22,20 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         const docRef = doc(db, 'users', currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
-        }
+        return onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          }
+          setLoading(false);
+        });
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -74,6 +77,7 @@ export default function App() {
     { id: 'chat', label: 'AI Support', icon: MessageSquare },
     { id: 'mood', label: 'Mood Tracker', icon: Heart },
     { id: 'assessment', label: 'Assessment', icon: ClipboardCheck },
+    { id: 'profile', label: 'Account', icon: UserCircle },
   ];
 
   return (
@@ -186,9 +190,10 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {view === 'dashboard' && <Dashboard profile={profile} user={user} setView={setView} />}
-              {view === 'chat' && <Chat user={user} />}
+              {view === 'chat' && <Chat user={user} profile={profile} />}
               {view === 'mood' && <MoodTracker user={user} />}
               {view === 'assessment' && <Assessment user={user} />}
+              {view === 'profile' && <Profile profile={profile} user={user} />}
             </motion.div>
           </AnimatePresence>
         </div>

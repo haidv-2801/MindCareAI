@@ -1,8 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 
+import { UserProfile } from "../types";
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-export const getAIResponse = async (message: string, history: { role: 'user' | 'model', parts: { text: string }[] }[]) => {
+export const getAIResponse = async (message: string, history: { role: 'user' | 'model', parts: { text: string }[] }[], profile?: UserProfile) => {
+  const persona = profile?.aiPersona || "Empathetic & Supportive";
+  const bio = profile?.bio ? `User Bio: ${profile.bio}` : "";
+  const interests = profile?.interests?.length ? `User Interests: ${profile.interests.join(', ')}` : "";
+  
   const model = ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: history.concat([{ role: 'user', parts: [{ text: message }] }]),
@@ -10,6 +16,12 @@ export const getAIResponse = async (message: string, history: { role: 'user' | '
       systemInstruction: `You are MindCare AI, a compassionate and professional mental health support assistant. 
       Your goal is to provide emotional support, active listening, and helpful coping strategies. 
       
+      USER CONTEXT:
+      - Name: ${profile?.fullName || 'User'}
+      - Persona to adopt: ${persona}
+      ${bio}
+      ${interests}
+
       CRITICAL SAFETY RULES:
       1. If the user expresses intent to harm themselves or others, you MUST prioritize safety. 
       2. Provide crisis hotline information immediately if danger is detected.

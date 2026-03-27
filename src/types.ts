@@ -3,6 +3,9 @@ export interface UserProfile {
   email: string;
   gender: 'Male' | 'Female' | 'Other';
   birthYear: number;
+  bio?: string;
+  interests?: string[];
+  aiPersona?: string;
   createdAt: string;
 }
 
