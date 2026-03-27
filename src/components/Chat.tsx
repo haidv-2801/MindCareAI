@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, onSnapshot, limit, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { Message, ChatSession } from '../types';
-import { getAIResponse, analyzeEmotion } from '../services/gemini';
-import { Send, Bot, User as UserIcon, AlertTriangle, Loader2, MessageSquare, Plus, ChevronRight, History } from 'lucide-react';
+import { getAIResponse, analyzeEmotion, summarizeSession } from '../services/gemini';
+import { Send, Bot, User as UserIcon, AlertTriangle, Loader2, MessageSquare, Plus, ChevronRight, History, Edit2, Check, X as CloseIcon } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -16,6 +16,8 @@ export default function Chat({ user }: { user: User }) {
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch all sessions for the user
@@ -40,6 +42,16 @@ export default function Chat({ user }: { user: User }) {
 
     return () => unsubscribe();
   }, [user.uid]);
+
+  // Update current session object when sessions list changes (to get title updates)
+  useEffect(() => {
+    if (session) {
+      const updated = sessions.find(s => s.id === session.id);
+      if (updated && updated.sessionTitle !== session.sessionTitle) {
+        setSession(updated);
+      }
+    }
+  }, [sessions]);
 
   // Fetch messages for the selected session
   useEffect(() => {
@@ -67,7 +79,7 @@ export default function Chat({ user }: { user: User }) {
     try {
       const newSession: Omit<ChatSession, 'id'> = {
         userId: user.uid,
-        sessionTitle: `Session ${format(new Date(), 'MMM d, HH:mm')}`,
+        sessionTitle: `New Session ${format(new Date(), 'HH:mm')}`,
         createdAt: new Date().toISOString(),
       };
       const sessionRef = await addDoc(collection(db, 'chat_sessions'), newSession);
@@ -78,6 +90,18 @@ export default function Chat({ user }: { user: User }) {
       console.error('Error starting new session:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!session || !newTitle.trim()) return;
+    try {
+      await updateDoc(doc(db, 'chat_sessions', session.id), {
+        sessionTitle: newTitle.trim()
+      });
+      setEditingTitle(null);
+    } catch (error) {
+      console.error('Rename error:', error);
     }
   };
 
@@ -99,6 +123,14 @@ export default function Chat({ user }: { user: User }) {
       };
       await addDoc(collection(db, `chat_sessions/${session.id}/messages`), userMsg);
 
+      // Update title immediately with first message if it's the first message
+      if (messages.length === 0 && session.sessionTitle.startsWith('New Session')) {
+        const tempTitle = text.length > 40 ? text.substring(0, 37) + '...' : text;
+        await updateDoc(doc(db, 'chat_sessions', session.id), {
+          sessionTitle: tempTitle
+        });
+      }
+
       // 2. Get AI response
       const history = messages.map(m => ({
         role: m.sender === 'user' ? 'user' as const : 'model' as const,
@@ -108,11 +140,12 @@ export default function Chat({ user }: { user: User }) {
       const aiText = await getAIResponse(text, history);
       const emotion = await analyzeEmotion(text);
 
-      // 3. Check for crisis
+      // 3. Save AI message
+      let actualResponse = aiText;
       if (aiText.includes('[CRISIS_DETECTED]')) {
         const parts = aiText.split('\n');
         const crisisInfo = parts[0];
-        const actualResponse = parts.slice(1).join('\n');
+        actualResponse = parts.slice(1).join('\n');
         
         await addDoc(collection(db, 'crisis_alerts'), {
           userId: user.uid,
@@ -121,25 +154,28 @@ export default function Chat({ user }: { user: User }) {
           alertMessage: crisisInfo,
           createdAt: new Date().toISOString(),
         });
-
-        const aiMsg: Omit<Message, 'id'> = {
-          sessionId: session.id,
-          sender: 'ai',
-          messageText: actualResponse,
-          emotionDetected: emotion,
-          createdAt: new Date().toISOString(),
-        };
-        await addDoc(collection(db, `chat_sessions/${session.id}/messages`), aiMsg);
-      } else {
-        const aiMsg: Omit<Message, 'id'> = {
-          sessionId: session.id,
-          sender: 'ai',
-          messageText: aiText,
-          emotionDetected: emotion,
-          createdAt: new Date().toISOString(),
-        };
-        await addDoc(collection(db, `chat_sessions/${session.id}/messages`), aiMsg);
       }
+
+      const aiMsg: Omit<Message, 'id'> = {
+        sessionId: session.id,
+        sender: 'ai',
+        messageText: actualResponse,
+        emotionDetected: emotion,
+        createdAt: new Date().toISOString(),
+      };
+      await addDoc(collection(db, `chat_sessions/${session.id}/messages`), aiMsg);
+
+      // 4. Refine title with AI summary after the first exchange
+      if (messages.length === 0) {
+        const summary = await summarizeSession([
+          { role: 'user', text },
+          { role: 'model', text: actualResponse }
+        ]);
+        await updateDoc(doc(db, 'chat_sessions', session.id), {
+          sessionTitle: summary
+        });
+      }
+
     } catch (error) {
       console.error('Chat error:', error);
     } finally {
@@ -186,12 +222,43 @@ export default function Chat({ user }: { user: User }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex-shrink-0 flex items-center justify-center">
               <Bot className="text-indigo-600 w-6 h-6" />
             </div>
-            <div>
-              <h2 className="font-bold text-slate-900">{session?.sessionTitle || 'MindCare AI Assistant'}</h2>
+            <div className="flex-1 min-w-0">
+              {editingTitle === session?.id ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                    className="flex-1 text-sm font-bold text-slate-900 border-b-2 border-indigo-500 outline-none py-1"
+                  />
+                  <button onClick={handleRename} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingTitle(null)} className="p-1 text-red-500 hover:bg-red-50 rounded">
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <h2 className="font-bold text-slate-900 truncate">{session?.sessionTitle || 'MindCare AI Assistant'}</h2>
+                  {session && (
+                    <button 
+                      onClick={() => {
+                        setEditingTitle(session.id);
+                        setNewTitle(session.sessionTitle);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )}
               <p className="text-xs text-emerald-500 font-medium flex items-center gap-1">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                 Online & Ready to Listen
@@ -303,7 +370,7 @@ export default function Chat({ user }: { user: User }) {
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-bold text-slate-900">Chat History</h2>
               <button onClick={() => setShowHistory(false)} className="p-2 text-slate-500">
-                <X className="w-6 h-6" />
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
             <div className="p-4">
@@ -343,5 +410,3 @@ export default function Chat({ user }: { user: User }) {
     </div>
   );
 }
-
-import { X } from 'lucide-react';

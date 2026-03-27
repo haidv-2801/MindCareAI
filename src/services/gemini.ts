@@ -24,6 +24,19 @@ export const getAIResponse = async (message: string, history: { role: 'user' | '
   return response.text;
 };
 
+export const summarizeSession = async (messages: { role: 'user' | 'model', text: string }[]) => {
+  const conversation = messages.map(m => `${m.role}: ${m.text}`).join('\n');
+  const model = ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Summarize the following mental health support conversation into a very short, 3-5 word title that captures the main topic or feeling. Return ONLY the title text:
+
+${conversation}`,
+  });
+
+  const response = await model;
+  return response.text?.trim().replace(/^"|"$/g, '') || "New Session";
+};
+
 export const analyzeEmotion = async (text: string) => {
   const model = ai.models.generateContent({
     model: "gemini-3-flash-preview",
